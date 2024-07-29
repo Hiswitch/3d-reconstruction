@@ -11,6 +11,9 @@ import h5py
 import numpy as np
 import cv2
 
+from scipy.optimize import minimize
+import torch
+
 def get_image_ids(image_dir: Path):
     images = {}
     image_paths = sorted(image_dir.glob('*'))
@@ -120,8 +123,8 @@ def affine_epipolar_geometry_2_views(name0, name1, features, matches):
 
     r = []
     for (id0, id1), score in zip(matches, scores):
-        if score < 0.95:
-            continue
+        # if score < 0.95:
+        #     continue
         x0, y0 = points0[id0]
         x1, y1 = points1[id1]
 
@@ -219,17 +222,149 @@ def affine_epipolar_geometry_3_views(name0, name1, name2, features, matches):
     P02 = P(axis_projection02)
 
     matches012 = get_common_matches(matches, name0, name1, name2)
-    keypoints = get_keypoints(feature_path)
+    keypoints0 = get_keypoints(features, name0)
+    keypoints1 = get_keypoints(features, name1)
+    keypoints2 = get_keypoints(features, name2)
+
+    r = []
+    for i in range(len(matches012)):
+        id0, id1, id2 = matches012[i]
+        r.append(np.hstack((keypoints0[id0].T, keypoints1[id1].T, keypoints2[id2].T)))
+    
+    r_mean = np.mean(r, axis=0)
+    v = [r[i] - r_mean for i in range(len(matches012))]
 
     def ETK3(rho_list):
         def temp(s, D, E, P, rho):
-            t1 = np.array(s(D + np.cos(rho) * E))
+            t1 = np.array(s * (D + np.cos(rho) * E))
             t2 = np.array(s * np.sin(rho) * P)
             return np.hstack((t1, t2))
         
         L = np.vstack((np.array([[1, 0, 0], [0, 1, 0]]), temp(s01, D01, E01, P01, rho_list[0]), temp(s02, D02, E02, P02, rho_list[1])))
+        res = 0
+        for i in range(len(v)):
+            res += np.linalg.norm(v[i] - L @ np.linalg.pinv(L.T @ L) @ L.T @ v[i]) ** 2
 
+        return res
+    
+    # print(ETK3([0, 0]))
+    
+    rho_list = minimize(ETK3, [0, 0], method = 'Nelder-Mead')
+    print(rho_list)
+    
+import torch
+import numpy as np
+from scipy.optimize import minimize
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def visualize_3d_points(points):
+    # 创建3D图形
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # 绘制3D点
+    ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=1)
+
+    # 设置标签
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    # 保存图像
+    plt.savefig('3d_points_matplotlib.png')
+
+def affine_epipolar_geometry_3_views_tensor(name0, name1, name2, features, matches):
+    s01, axis_projection01, cyclotorsion01 = affine_epipolar_geometry_2_views(name0, name1, features, matches)
+    s02, axis_projection02, cyclotorsion02 = affine_epipolar_geometry_2_views(name0, name2, features, matches)
+    
+    # Convert values to tensors
+    axis_projection01 = torch.tensor(axis_projection01, dtype=torch.float64)
+    cyclotorsion01 = torch.tensor(cyclotorsion01, dtype=torch.float64)
+    axis_projection02 = torch.tensor(axis_projection02, dtype=torch.float64)
+    cyclotorsion02 = torch.tensor(cyclotorsion02, dtype=torch.float64)
+    
+    keypoints0 = torch.tensor(get_keypoints(features, name0), dtype=torch.float64)
+    keypoints1 = torch.tensor(get_keypoints(features, name1), dtype=torch.float64)
+    keypoints2 = torch.tensor(get_keypoints(features, name2), dtype=torch.float64)
+    
+    def D(axis_projection, cyclotorsion):
+        axis_projection = axis_projection.unsqueeze(0)
+        cos_axis_projection = torch.cos(axis_projection)
+        sin_axis_projection = torch.sin(axis_projection)
+        cos_diff = torch.cos(axis_projection - cyclotorsion)
+        sin_diff = torch.sin(axis_projection - cyclotorsion)
+        return torch.matmul(torch.tensor([[cos_axis_projection], [sin_axis_projection]]),
+                            torch.tensor([[cos_diff, sin_diff]]))
+    
+    def E(cyclotorsion, D):
+        cos_cyclotorsion = torch.cos(cyclotorsion)
+        sin_cyclotorsion = torch.sin(cyclotorsion)
+        R = torch.tensor([[cos_cyclotorsion, -sin_cyclotorsion],
+                          [sin_cyclotorsion, cos_cyclotorsion]])
+        return R - D
+    
+    def P(axis_projection):
+        sin_axis_projection = torch.sin(axis_projection)
+        cos_axis_projection = torch.cos(axis_projection)
+        return torch.tensor([[sin_axis_projection], [-cos_axis_projection]])
+    
+    D01 = D(axis_projection01, cyclotorsion01)
+    E01 = E(cyclotorsion01, D01)
+    P01 = P(axis_projection01)
+    D02 = D(axis_projection02, cyclotorsion02)
+    E02 = E(cyclotorsion02, D02)
+    P02 = P(axis_projection02)
+
+    matches012 = get_common_matches(matches, name0, name1, name2)
+    print(f"num of interest point: {len(matches012)}")
+
+    r = []
+    for i in range(len(matches012)):
+        id0, id1, id2 = matches012[i]
+        r.append(torch.cat((keypoints0[id0], keypoints1[id1], keypoints2[id2]), dim=0))
+    
+    r = torch.stack(r)
+    r_mean = torch.mean(r, dim=0)
+    v = [r[i] - r_mean for i in range(len(matches012))]
+
+    def Lf(rho_list):
+        rho_list = torch.tensor(rho_list, dtype=torch.float64)
+        def temp(s, D, E, P, rho):
+            t1 = s * (D + torch.cos(rho) * E)
+            t2 = s * torch.sin(rho) * P
+            return torch.cat((t1, t2), dim=1)
         
+        L = torch.cat((
+            torch.tensor([[1, 0, 0], [0, 1, 0]], dtype=torch.float64),
+            temp(s01, D01, E01, P01, rho_list[0]),
+            temp(s02, D02, E02, P02, rho_list[1])
+        ), dim=0)
+        
+        return L
+    
+    def ETK3(rho_list):
+        L = Lf(rho_list)
+        
+        L_pseudo_inv = torch.linalg.pinv(L.T @ L) @ L.T
+        res = 0
+        for i in range(len(v)):
+            residual = v[i] - L @ L_pseudo_inv @ v[i]
+            res += torch.norm(residual) ** 2
+        
+        return res.item()
+
+    rho_list = minimize(ETK3, [0, 0], method='Nelder-Mead').x
+    print(rho_list)
+
+    L = Lf(rho_list)
+    X = []
+    for i in range(len(v)):
+        L_pseudo_inv = torch.linalg.pinv(L.T @ L) @ L.T
+        delta_Xi = L_pseudo_inv @ v[i]
+        X.append(delta_Xi.unsqueeze(0).numpy())
+    X = np.vstack(X)
+    visualize_3d_points(X)
 
 
 if __name__ == "__main__": 
@@ -256,8 +391,8 @@ if __name__ == "__main__":
     pairs = get_pairs(sfm_pairs)
 
     # affine_epipolar_geometry_2_views(pairs[0][0], pairs[0][1], feature_path, match_path)
-
-    affine_epipolar_geometry_3_views(pairs[0][0], pairs[0][1], pairs[1][1], feature_path, match_path)
+    # affine_epipolar_geometry_3_views(pairs[0][0], pairs[0][1], pairs[1][1], feature_path, match_path)
+    affine_epipolar_geometry_3_views_tensor(pairs[0][0], pairs[0][1], pairs[2][1], feature_path, match_path)
 
     # visualize_matches(images, pairs[0][0], pairs[0][1], feature_path, match_path, outputs)
 
