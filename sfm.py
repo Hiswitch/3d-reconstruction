@@ -326,6 +326,7 @@ def affine_epipolar_geometry_3_views_tensor(name0, name1, name2, features, match
     
     r = torch.stack(r)
     r_mean = torch.mean(r, dim=0)
+    print(r_mean)
     v = [r[i] - r_mean for i in range(len(matches012))]
 
     def Lf(rho_list):
@@ -364,7 +365,8 @@ def affine_epipolar_geometry_3_views_tensor(name0, name1, name2, features, match
         delta_Xi = L_pseudo_inv @ v[i]
         X.append(delta_Xi.unsqueeze(0).numpy())
     X = np.vstack(X)
-    visualize_3d_points(X)
+    
+    return X
 
 
 if __name__ == "__main__": 
@@ -392,7 +394,10 @@ if __name__ == "__main__":
 
     # affine_epipolar_geometry_2_views(pairs[0][0], pairs[0][1], feature_path, match_path)
     # affine_epipolar_geometry_3_views(pairs[0][0], pairs[0][1], pairs[1][1], feature_path, match_path)
-    affine_epipolar_geometry_3_views_tensor(pairs[0][0], pairs[0][1], pairs[2][1], feature_path, match_path)
+    X = affine_epipolar_geometry_3_views_tensor(pairs[0][0], pairs[0][1], pairs[1][1], feature_path, match_path)
+    Y = affine_epipolar_geometry_3_views_tensor(pairs[0][0], pairs[0][1], pairs[4][1], feature_path, match_path)
+    X = np.vstack((X, Y))
+    visualize_3d_points(X)
 
     # visualize_matches(images, pairs[0][0], pairs[0][1], feature_path, match_path, outputs)
 
