@@ -17,6 +17,10 @@ from math import exp
 def l1_loss(network_output, gt):
     return torch.abs((network_output - gt)).mean()
 
+def l1_loss_edge_weighted(network_output, gt, edge):
+    weight = 2 * torch.sigmoid(edge)
+    return torch.abs((network_output - gt) * weight).mean()
+
 def l2_loss(network_output, gt):
     return ((network_output - gt) ** 2).mean()
 

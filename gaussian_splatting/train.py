@@ -12,7 +12,7 @@
 import os
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim
+from utils.loss_utils import l1_loss, ssim, l1_loss_edge_weighted
 from gaussian_renderer import render, network_gui
 import sys
 from scene import Scene, GaussianModel
@@ -84,12 +84,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
         render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
-        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
-
+        image, normal, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg['render_normal'], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
+        gt_normal = viewpoint_cam.normal.cuda()
+        edge = viewpoint_cam.edge.cuda()
+
+        Ll1 = l1_loss_edge_weighted(image, gt_image, edge)
+        Ll1_normal = l1_loss(normal, gt_normal)
+        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image)) + opt.lambda_normal * Ll1_normal
         loss.backward()
 
         iter_end.record()
