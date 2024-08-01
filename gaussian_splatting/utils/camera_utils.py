@@ -43,7 +43,7 @@ def loadCam(args, id, cam_info, resolution_scale):
     resized_edge = PILtoTorch(cam_info.edge, resolution)
 
     gt_image = resized_image_rgb[:3, ...]
-    gt_normal = resized_normal[:3, ...]
+    gt_normal = resized_normal[:3, ...] * 2 - 1 ## origin normal is [0, 1] -> [-1, 1]
     edge = resized_edge[:3, ...]
     loaded_mask = None
 
