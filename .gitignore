@@ -1,4 +1,5 @@
-Replica/
-SuGaR/
-outputs/
-data/
+code/data/
+code/exp/
+code/preprocess/checkpoints
+code/preprocess/ominidata/pretrained_models
+__pycache__/

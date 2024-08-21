@@ -1,4 +1,0 @@
-# ninja log v5
-0	9552	1722003117670117574	/mnt/data3/hushuaiwei/3d-reconstruction/SuGaR/gaussian_splatting/submodules/simple-knn/build/temp.linux-x86_64-cpython-39/simple_knn.o	90feca6225c57e3f
-0	14219	1722003122334079525	/mnt/data3/hushuaiwei/3d-reconstruction/SuGaR/gaussian_splatting/submodules/simple-knn/build/temp.linux-x86_64-cpython-39/ext.o	eb74e6b236659245
-0	45513	1722003153629790777	/mnt/data3/hushuaiwei/3d-reconstruction/SuGaR/gaussian_splatting/submodules/simple-knn/build/temp.linux-x86_64-cpython-39/spatial.o	d4e0335e2608da03
